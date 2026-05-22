@@ -1,0 +1,23 @@
+FROM python:3.11-slim-bookworm
+
+LABEL description="Kafka Producer for CyberSec logs"
+
+WORKDIR /app
+
+# Install dependencies
+COPY producer/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy producer source
+COPY producer/kafka_producer.py /app/kafka_producer.py
+
+ENV PYTHONUNBUFFERED=1
+ENV KAFKA_BOOTSTRAP=kafka:29092
+
+# Data directory — mount at runtime: -v ./data:/app/data
+RUN mkdir -p /app/data
+
+CMD ["python", "/app/kafka_producer.py", \
+     "--input", "/app/data/cybersecurity_threat_detection_logs.csv", \
+     "--rate", "10", "--loop"]

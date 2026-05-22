@@ -1,0 +1,10 @@
+FROM harisekhon/hbase:2.1
+
+# Expose Thrift port (used by happybase Python client)
+EXPOSE 9090 16000 16010 16020 16030
+
+# Start HBase + Thrift server together
+COPY hbase-entrypoint.sh /hbase-entrypoint.sh
+RUN chmod +x /hbase-entrypoint.sh
+
+ENTRYPOINT ["/hbase-entrypoint.sh"]

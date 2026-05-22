@@ -1,0 +1,17 @@
+```gitignore
+# Env files
+.env.local
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Large datasets
+*.csv
+
+# Logs
+*.log
+
+#AUTRE 
+TESTING_GUIDE.md
+```

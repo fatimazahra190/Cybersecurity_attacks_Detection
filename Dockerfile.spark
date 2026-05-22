@@ -1,0 +1,76 @@
+# =============================================================================
+#  Dockerfile.spark — PySpark 3.4.3 + Python 3.11
+#  Used for BOTH batch jobs and streaming (different CMD overrides)
+#
+#  Key fixes:
+#    - Spark 3.4.3 (LTS, stable with Python 3.11)
+#    - Kafka connector JARs downloaded at build time (no network at runtime)
+#    - PYTHONPATH set so batch/speed modules import correctly
+#    - pip packages pinned to known-working versions
+# =============================================================================
+FROM python:3.11-slim-bookworm
+
+LABEL maintainer="CyberSec Team"
+LABEL description="PySpark 3.4.3 environment for batch and streaming"
+
+# ── System dependencies ──────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk-headless \
+    curl \
+    wget \
+    netcat-openbsd \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# ── Spark 3.4.3 ──────────────────────────────────────────────────────
+ENV SPARK_VERSION=3.4.3
+ENV HADOOP_VERSION=3
+ENV SPARK_HOME=/opt/spark
+ENV PATH="${SPARK_HOME}/bin:${PATH}"
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+
+RUN wget -q \
+    "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
+    -O /tmp/spark.tgz \
+    && tar -xzf /tmp/spark.tgz -C /opt \
+    && mv /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} /opt/spark \
+    && rm /tmp/spark.tgz
+
+# ── Kafka connector JARs for Spark Structured Streaming ─────────────
+# All JARs must match Spark 3.4.3 / Scala 2.12 versions exactly
+RUN set -e && \
+    SCALA=2.12 && \
+    SPARK_VER=3.4.3 && \
+    KAFKA_VER=3.4.1 && \
+    POOL_VER=2.11.1 && \
+    BASE=https://repo1.maven.org/maven2 && \
+    wget -q "${BASE}/org/apache/spark/spark-sql-kafka-0-10_${SCALA}/${SPARK_VER}/spark-sql-kafka-0-10_${SCALA}-${SPARK_VER}.jar" \
+         -O /opt/spark/jars/spark-sql-kafka.jar && \
+    wget -q "${BASE}/org/apache/kafka/kafka-clients/${KAFKA_VER}/kafka-clients-${KAFKA_VER}.jar" \
+         -O /opt/spark/jars/kafka-clients.jar && \
+    wget -q "${BASE}/org/apache/spark/spark-token-provider-kafka-0-10_${SCALA}/${SPARK_VER}/spark-token-provider-kafka-0-10_${SCALA}-${SPARK_VER}.jar" \
+         -O /opt/spark/jars/spark-token-provider-kafka.jar && \
+    wget -q "${BASE}/org/apache/commons/commons-pool2/${POOL_VER}/commons-pool2-${POOL_VER}.jar" \
+         -O /opt/spark/jars/commons-pool2.jar
+
+# ── Python dependencies ──────────────────────────────────────────────
+WORKDIR /app
+COPY requirements.spark.txt /app/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /app/requirements.txt
+
+# ── Application source ───────────────────────────────────────────────
+COPY batch-layer/ /app/batch-layer/
+COPY speed-layer/  /app/speed-layer/
+
+# ── Environment ──────────────────────────────────────────────────────
+ENV PYTHONPATH="/app/batch-layer:/app/speed-layer"
+ENV PYTHONUNBUFFERED=1
+
+# Default: keep container alive (override with CMD for actual jobs)
+ENTRYPOINT ["python"]
+CMD ["-c", "import time; print('Spark container ready'); [time.sleep(300) for _ in iter(int, 1)]"]
